@@ -1,23 +1,234 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>홈</title>
+    <title>Club Site</title>
+
+    <style>
+
+        *{
+            box-sizing:border-box;
+        }
+
+        body{
+            margin:0;
+            background:#f4f6f8;
+            font-family:Arial,sans-serif;
+        }
+
+        .container{
+            width:1000px;
+            margin:auto;
+            padding:30px;
+        }
+
+        .header{
+            background:white;
+            border-radius:12px;
+            padding:25px;
+            margin-bottom:20px;
+        }
+
+        .welcome{
+            font-size:30px;
+            font-weight:bold;
+        }
+
+        .sub{
+            color:gray;
+            margin-top:10px;
+        }
+
+        .top-grid{
+            display:grid;
+            grid-template-columns:1fr 1fr;
+            gap:20px;
+            margin-bottom:20px;
+        }
+
+        .box{
+            background:white;
+            border-radius:12px;
+            padding:20px;
+        }
+
+        .box h3{
+            margin-top:0;
+        }
+
+        .menu{
+            display:grid;
+            grid-template-columns:repeat(3,1fr);
+            gap:20px;
+        }
+
+        .card{
+            background:white;
+            border-radius:12px;
+            padding:30px;
+            text-align:center;
+            text-decoration:none;
+            color:black;
+            transition:0.2s;
+        }
+
+        .card:hover{
+            transform:translateY(-4px);
+            box-shadow:0 5px 15px rgba(0,0,0,0.15);
+        }
+
+        .card h2{
+            margin:0;
+            margin-bottom:10px;
+        }
+
+        .card p{
+            color:gray;
+        }
+
+        .notice{
+            margin:8px 0;
+            padding:8px;
+            border-bottom:1px solid #eee;
+        }
+
+        .hot-post{
+            margin:8px 0;
+            padding:8px;
+            border-bottom:1px solid #eee;
+        }
+
+    </style>
+
 </head>
 <body>
 
-<h1>동아리 시스템</h1>
+<div class="container">
 
-<p>안녕하세요 {{ user.username }}님</p>
+    <div class="header">
+
+        <div class="welcome">
+            👋 안녕하세요 {{ user.username }}님
+        </div>
+
+        <div class="sub">
+            Club Site 메인 페이지
+        </div>
+
+        
+    <div class="top-grid">
+
+        <div class="box">
+
+            <h3>📊 사이트 통계</h3>
+
+            <p>👥 회원 수 : {{ total_users }}</p>
+
+            <p>📋 게시글 수 : {{ total_posts }}</p>
+
+            <p>💬 댓글 수 : {{ total_comments }}</p>
+
+        </div>
+
+        <div class="box">
+
+            <h3>🚀 서버 상태</h3>
+
+            <p>🟢 온라인</p>
+
+            <p>☁️ Render 배포 완료</p>
+
+        </div>
+    </div>
+
+    <div class="top-grid">
+
+        <div class="box">
+
+            <h3>📢 공지사항</h3>
+
+            <div class="notice">
+                아직 공지사항이 없습니다.
+            </div>
+
+        </div>
+
+        <div class="box">
+
+            <h3>🔥 인기글 TOP5</h3>
+
+            <div class="hot-post">
+                인기글 기능 준비중
+            </div>
+
+        </div>
+
+    </div>
+
+    <div class="menu">
+
+        <a href="/board/" class="card">
+
+            <h2>📋 게시판</h2>
+
+            <p>
+                게시글 및 댓글
+            </p>
+
+        </a>
+
+        <a href="/ranking/" class="card">
+
+            <h2>🏆 랭킹</h2>
+
+            <p>
+                점수 확인
+            </p>
+
+        </a>
+
+        <a href="#" class="card">
+
+            <h2>🎮 게임</h2>
+
+            <p>
+                준비중
+            </p>
+
+        </a>
+
+        <a href="#" class="card">
+
+            <h2>👤 프로필</h2>
+
+            <p>
+                준비중
+            </p>
+
+        </a>
+
+        <a href="#" class="card">
+
+            <h2>⚙️ 설정</h2>
+
+            <p>
+                준비중
+            </p>
+
+        </a>
+
+        <a href="/admin/" class="card">
+
+            <h2>🛠 관리자</h2>
+
+            <p>
+                관리자 페이지
+            </p>
+
+        </a>
+
+    </div>
+
+</div>
 
 </body>
 </html>
-<hr>
-
-<h2>게임 점수 제출</h2>
-
-<form method="post" action="/submit-score/">
-    {% csrf_token %}
-    
-    <input type="number" name="score" placeholder="점수 입력">
-    <button type="submit">제출</button>
-</form>

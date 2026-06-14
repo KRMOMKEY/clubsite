@@ -30,7 +30,16 @@ def submit_score(request):
 # ----------------------
 @login_required
 def home(request):
-    return render(request, 'home.html')
+
+    total_users = User.objects.count()
+    total_posts = Post.objects.count()
+    total_comments = Comment.objects.count()
+
+    return render(request, "home.html", {
+        "total_users": total_users,
+        "total_posts": total_posts,
+        "total_comments": total_comments,
+    })
 
 
 # ----------------------
