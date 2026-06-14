@@ -1,0 +1,302 @@
+from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib.auth.decorators import login_required
+from django.contrib.auth.models import User
+from django.db.models import Count, Q, F
+from django.http import JsonResponse
+from django.utils import timezone
+from django.core.paginator import Paginator
+
+from .models import Score, Comment, CommentLike, Post, PostLike
+from .models import Post, PostVote
+
+# ----------------------
+# 점수
+# ----------------------
+@login_required
+def submit_score(request):
+    if request.method == "POST":
+        score = int(request.POST.get("score", 0))
+
+        Score.objects.create(
+            user=request.user,
+            score=score
+        )
+
+        return JsonResponse({"status": "ok"})
+
+
+# ----------------------
+# 홈
+# ----------------------
+@login_required
+def home(request):
+    return render(request, 'home.html')
+
+
+# ----------------------
+# 랭킹
+# ----------------------
+def ranking(request):
+    scores = Score.objects.order_by('-score')
+    return render(request, 'ranking.html', {'scores': scores})
+
+
+# ----------------------
+# 게시판 (검색 + 인기순 + 최신 + 페이지네이션 + 공지)
+# ----------------------
+def board(request):
+    sort = request.GET.get('sort', 'hot')
+    query = request.GET.get('q', '')
+    page = request.GET.get('page')
+
+    posts = Post.objects.all()
+
+    # 🔍 검색
+    if query:
+        posts = posts.filter(
+            Q(title__icontains=query) |
+            Q(content__icontains=query) |
+            Q(user__username__icontains=query)
+        )
+
+    # 🔥 Reddit 스타일 정렬
+    if sort == 'hot':
+        posts = posts.annotate(
+            hot_score=F('score') + F('views') * 0.1
+        ).order_by('-is_notice', '-hot_score', '-created_at')
+
+    elif sort == 'top':
+        posts = posts.order_by('-is_notice', '-score')
+
+    else:
+        posts = posts.order_by('-is_notice', '-created_at')
+
+    paginator = Paginator(posts, 10)
+    posts = paginator.get_page(page)
+
+    return render(request, 'board.html', {
+        'posts': posts,
+        'sort': sort,
+        'query': query
+    })
+
+
+# ----------------------
+# 글 작성
+# ----------------------
+@login_required
+def create_post(request):
+    if request.method == "POST":
+        title = request.POST.get("title", "").strip()
+        content = request.POST.get("content", "").strip()
+
+        if not title or not content:
+            return redirect('/board/')
+
+        # 기본값: 공지 아님
+        is_notice = False
+
+        # 관리자만 공지 가능
+        if request.user.is_staff or request.user.is_superuser:
+            is_notice = request.POST.get("is_notice") == "on"
+
+        Post.objects.create(
+            user=request.user,
+            title=title,
+            content=content,
+            is_notice=is_notice
+        )
+
+        return redirect('/board/')
+
+# ----------------------
+# 게시글 상세
+# ----------------------
+def post_detail(request, post_id):
+    Post.objects.filter(id=post_id).update(views=F('views') + 1)
+
+    post = get_object_or_404(Post, id=post_id)
+    comments = post.comment_set.filter(parent=None)
+
+    return render(request, 'post_detail.html', {
+        'post': post,
+        'comments': comments
+    })
+
+
+# ----------------------
+# 댓글 작성
+# ----------------------
+@login_required
+def add_comment(request, post_id):
+
+    if request.method == "POST":
+
+        content = request.POST.get("content", "").strip()
+
+        parent_id = request.POST.get("parent_id")
+
+        parent = None
+
+        if parent_id:
+            parent = Comment.objects.get(id=parent_id)
+
+        if content:
+
+            comment = Comment.objects.create(
+                post_id=post_id,
+                user=request.user,
+                content=content,
+                parent=parent
+            )
+
+            return JsonResponse({
+                "success": True,
+                "id": comment.id,
+                "username": request.user.username,
+                "content": comment.content
+            })
+
+    return JsonResponse({
+        "success": False
+    })
+
+# ----------------------
+# 게시글 좋아요
+# ----------------------
+@login_required
+def like_post(request, post_id):
+    post = Post.objects.get(id=post_id)
+
+    like, created = PostLike.objects.get_or_create(
+        post=post,
+        user=request.user
+    )
+
+    if not created:
+        like.delete()
+
+    return redirect('/board/')
+
+
+# ----------------------
+# 댓글 좋아요
+# ----------------------
+@login_required
+def like_comment(request, comment_id):
+    comment = Comment.objects.get(id=comment_id)
+
+    like, created = CommentLike.objects.get_or_create(
+        comment=comment,
+        user=request.user
+    )
+
+    if not created:
+        like.delete()
+
+    return redirect('/board/')
+
+
+# ----------------------
+# 게시글 삭제
+# ----------------------
+@login_required
+def delete_post(request, post_id):
+    post = get_object_or_404(Post, id=post_id)
+
+    if request.user == post.user:
+        post.delete()
+
+    return redirect('/board/')
+
+
+# ----------------------
+# 게시글 수정
+# ----------------------
+@login_required
+def edit_post(request, post_id):
+    post = get_object_or_404(Post, id=post_id)
+
+    if request.user != post.user:
+        return redirect('/board/')
+
+    if request.method == "POST":
+        post.title = request.POST.get("title", "").strip()
+        post.content = request.POST.get("content", "").strip()
+
+        post.edited = True
+        post.edited_at = timezone.now()
+        post.save()
+
+        return redirect(f'/post/{post.id}/')
+
+    return render(request, 'edit_post.html', {
+        'post': post
+    })
+
+
+# ----------------------
+# 댓글 삭제
+# ----------------------
+@login_required
+def delete_comment(request, comment_id):
+    comment = get_object_or_404(Comment, id=comment_id)
+
+    if comment.user == request.user:
+        post_id = comment.post.id
+        comment.delete()
+        return redirect(f'/post/{post_id}/')
+
+    return redirect('/board/')
+
+@login_required
+def vote_post(request, post_id):
+
+    if request.method != "POST":
+        return JsonResponse({
+            "success": False
+        })
+
+    post = get_object_or_404(Post, id=post_id)
+
+    value = int(request.POST.get("value", 0))
+
+    if value not in [1, -1]:
+        return JsonResponse({
+            "success": False
+        })
+
+    vote, created = PostVote.objects.get_or_create(
+        post=post,
+        user=request.user,
+        defaults={
+            "value": value
+        }
+    )
+
+    if created:
+
+        post.score += value
+
+    else:
+
+        if vote.value == value:
+
+            post.score -= vote.value
+            vote.delete()
+
+        else:
+
+            post.score -= vote.value
+
+            vote.value = value
+            vote.save()
+
+            post.score += value
+
+    post.save()
+
+    return JsonResponse({
+        "success": True,
+        "score": post.score
+    })

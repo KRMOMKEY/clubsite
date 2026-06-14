@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{ post.title }}</title>
+
+    <style>
+
+        body {
+            font-family: Arial, sans-serif;
+            background: #f6f7f8;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .container {
+            width: 800px;
+            margin: auto;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+        }
+
+        .vote {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .vote button {
+            border: none;
+            background: none;
+            cursor: pointer;
+            font-size: 24px;
+        }
+
+        .score {
+            font-size: 20px;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+
+        .meta {
+            color: gray;
+            font-size: 13px;
+        }
+
+        .comment {
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .reply {
+            margin-left: 40px;
+            color: #555;
+            padding-top: 5px;
+        }
+
+        input[type=text] {
+            padding: 8px;
+            width: 300px;
+        }
+
+        button {
+            padding: 6px 12px;
+        }
+
+    </style>
+
+</head>
+<body>
+
+<div class="container">
+
+    <a href="/board/">← 게시판으로</a>
+
+    <hr>
+
+    <h2>{{ post.title }}</h2>
+
+    <div class="vote">
+
+        <button onclick="votePost({{ post.id }}, 1)">
+            👍
+        </button>
+
+        <div
+            class="score"
+            id="score-{{ post.id }}">
+            🔥 {{ post.score|default:0 }}
+        </div>
+
+        <button onclick="votePost({{ post.id }}, -1)">
+            👎
+        </button>
+
+    </div>
+
+    <p>{{ post.content }}</p>
+
+    <div class="meta">
+        작성자 {{ post.user.username }}
+        · 조회수 {{ post.views }}
+        · {{ post.created_at }}
+
+        {% if post.edited %}
+            · ✏️ 수정됨
+        {% endif %}
+    </div>
+
+    <hr>
+
+    {% if user == post.user %}
+    <p>
+
+        <a href="/edit-post/{{ post.id }}/">
+            수정
+        </a>
+
+        |
+
+        <a href="/delete-post/{{ post.id }}/"
+           onclick="return confirm('삭제하시겠습니까?');">
+            삭제
+        </a>
+
+    </p>
+    {% endif %}
+
+    <hr>
+
+    <h3>댓글</h3>
+
+    <form id="comment-form">
+
+        {% csrf_token %}
+
+        <input
+            id="comment-content"
+            type="text"
+            placeholder="댓글 작성">
+
+        <button type="submit">
+            등록
+        </button>
+
+    </form>
+
+    <hr>
+
+    <div id="comment-list">
+
+        {% for c in comments %}
+
+        <div class="comment">
+
+            <b>{{ c.user.username }}</b>
+            : {{ c.content }}
+
+            <a href="/comment-like/{{ c.id }}/">
+                ❤️ {{ c.commentlike_set.count }}
+            </a>
+
+            {% if user == c.user %}
+                |
+                <a href="/delete-comment/{{ c.id }}/">
+                    삭제
+                </a>
+            {% endif %}
+
+            <form
+                method="post"
+                action="/comment/{{ post.id }}/">
+
+                {% csrf_token %}
+
+                <input
+                    type="hidden"
+                    name="parent_id"
+                    value="{{ c.id }}">
+
+                <input
+                    type="text"
+                    name="content"
+                    placeholder="답글 작성">
+
+                <button type="submit">
+                    답글
+                </button>
+
+            </form>
+
+            {% for r in c.replies.all %}
+
+            <div class="reply">
+
+                ↳
+                <b>{{ r.user.username }}</b>
+                : {{ r.content }}
+
+            </div>
+
+            {% endfor %}
+
+        </div>
+
+        {% empty %}
+
+        <p>댓글이 없습니다.</p>
+
+        {% endfor %}
+
+    </div>
+
+</div>
+
+<script>
+
+function getCookie(name) {
+
+    let cookieValue = null;
+
+    if (document.cookie && document.cookie !== '') {
+
+        const cookies = document.cookie.split(';');
+
+        for (let i = 0; i < cookies.length; i++) {
+
+            const cookie = cookies[i].trim();
+
+            if (cookie.startsWith(name + '=')) {
+
+                cookieValue = decodeURIComponent(
+                    cookie.substring(name.length + 1)
+                );
+
+                break;
+            }
+        }
+    }
+
+    return cookieValue;
+}
+
+
+// 추천 / 비추천
+function votePost(postId, value) {
+
+    fetch(`/vote-post/${postId}/`, {
+
+        method: "POST",
+
+        headers: {
+            "X-CSRFToken": getCookie("csrftoken"),
+            "Content-Type":
+                "application/x-www-form-urlencoded"
+        },
+
+        body: `value=${value}`
+
+    })
+
+    .then(response => response.json())
+
+    .then(data => {
+
+        if (data.success) {
+
+            document.getElementById(
+                `score-${postId}`
+            ).innerHTML =
+                "🔥 " + data.score;
+
+        }
+
+    })
+
+    .catch(error => {
+
+        console.error(error);
+
+    });
+
+}
+
+
+// 댓글 AJAX
+document.addEventListener("DOMContentLoaded", function () {
+
+    const form =
+        document.getElementById("comment-form");
+
+    form.addEventListener("submit", function(e) {
+
+        e.preventDefault();
+
+        const content =
+            document.getElementById(
+                "comment-content"
+            ).value.trim();
+
+        if (!content) {
+            return;
+        }
+
+        fetch("/comment/{{ post.id }}/", {
+
+            method: "POST",
+
+            headers: {
+                "X-CSRFToken":
+                    getCookie("csrftoken"),
+                "Content-Type":
+                    "application/x-www-form-urlencoded"
+            },
+
+            body:
+                `content=${encodeURIComponent(content)}`
+
+        })
+
+        .then(response => response.json())
+
+        .then(data => {
+
+            if (data.success) {
+
+                const html = `
+                <div class="comment">
+
+                    <b>${data.username}</b>
+                    : ${data.content}
+
+                    <a href="#">
+                        ❤️ 0
+                    </a>
+
+                </div>
+                `;
+
+                document
+                    .getElementById("comment-list")
+                    .insertAdjacentHTML(
+                        "afterbegin",
+                        html
+                    );
+
+                document
+                    .getElementById(
+                        "comment-content"
+                    ).value = "";
+
+            }
+
+        })
+
+        .catch(error => {
+
+            console.error(error);
+
+        });
+
+    });
+
+});
+
+</script>
+
+</body>
+</html>

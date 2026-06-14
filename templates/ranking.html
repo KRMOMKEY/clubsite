@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>랭킹</title>
+</head>
+<body>
+
+<h1>🏆 랭킹</h1>
+
+<ol>
+{% for s in scores %}
+    <li>{{ s.user.username }} - {{ s.score }}점</li>
+{% empty %}
+    <p>아직 점수가 없습니다.</p>
+{% endfor %}
+</ol>
+
+<a href="/">홈으로</a>
+
+</body>
+</html>
