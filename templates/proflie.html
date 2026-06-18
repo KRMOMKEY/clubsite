@@ -1,9 +1,10 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>프로필</title>
+    <title>내 프로필</title>
 
     <style>
+
         body{
             font-family:Arial;
             background:#f4f6f8;
@@ -11,49 +12,91 @@
         }
 
         .container{
-            width:800px;
+            width:1000px;
             margin:auto;
             padding:30px;
         }
 
-        .card{
+        .box{
             background:white;
-            padding:30px;
             border-radius:12px;
+            padding:20px;
             margin-bottom:20px;
         }
 
-        .btn{
-            display:inline-block;
-            padding:10px 20px;
-            background:#3498db;
-            color:white;
-            text-decoration:none;
-            border-radius:8px;
+        .post{
+            padding:12px;
+            border-bottom:1px solid #eee;
         }
+
+        a{
+            text-decoration:none;
+            color:black;
+        }
+
+        .back{
+            display:inline-block;
+            margin-bottom:20px;
+        }
+
     </style>
 </head>
 <body>
 
 <div class="container">
 
-    <div class="card">
+    <a href="/" class="back">
+        ← 홈으로
+    </a>
 
-        <h1>👤 프로필</h1>
+    <div class="box">
 
-        <p><b>아이디</b> : {{ user.username }}</p>
+        <h1>
+            👤 {{ user.username }}
+        </h1>
 
-        <p><b>가입일</b> : {{ user.date_joined }}</p>
-
-        <p><b>게시글 수</b> : {{ user_posts }}</p>
-
-        <p><b>댓글 수</b> : {{ user_comments }}</p>
+        <p>
+            가입일 :
+            {{ user.date_joined }}
+        </p>
 
     </div>
 
-    <a href="/" class="btn">
-        홈으로
-    </a>
+    <div class="box">
+
+        <h2>📊 활동 통계</h2>
+
+        <p>작성 글 : {{ post_count }}</p>
+
+        <p>작성 댓글 : {{ comment_count }}</p>
+
+        <p>총 추천 점수 : {{ total_score }}</p>
+
+    </div>
+
+    <div class="box">
+
+        <h2>📝 최근 작성 글</h2>
+
+        {% for post in my_posts %}
+
+            <div class="post">
+
+                <a href="/post/{{ post.id }}/">
+
+                    {{ post.title }}
+
+                </a>
+
+            </div>
+
+        {% empty %}
+
+            작성한 글이 없습니다.
+
+        {% endfor %}
+
+    </div>
 
 </div>
 
