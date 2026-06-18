@@ -1,13 +1,62 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>홈</title>
+    <title>로그인</title>
+
+    <style>
+
+        body{
+            background:#f4f6f8;
+            font-family:Arial;
+        }
+
+        .box{
+            width:400px;
+            margin:100px auto;
+            background:white;
+            padding:30px;
+            border-radius:12px;
+        }
+
+        input{
+            width:100%;
+            padding:10px;
+            margin-top:10px;
+            margin-bottom:20px;
+        }
+
+        button{
+            width:100%;
+            padding:12px;
+        }
+
+    </style>
 </head>
 <body>
 
-<h1>동아리 시스템</h1>
+<div class="box">
 
-<p>안녕하세요 {{ user.username }}님</p>
+    <h2>로그인</h2>
+
+    <form method="post">
+
+        {% csrf_token %}
+
+        {{ form.as_p }}
+
+        <button type="submit">
+            로그인
+        </button>
+
+    </form>
+
+    <hr>
+
+    <a href="/signup/">
+        회원가입
+    </a>
+
+</div>
 
 </body>
 </html>

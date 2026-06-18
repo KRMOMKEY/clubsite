@@ -107,6 +107,19 @@
     {% for p in posts %}
         {% if not p.is_notice %}
 
+
+            {% if user.is_staff %}
+
+            <a href="/hide-post/{{ post.id }}/">
+                숨김
+            </a>
+
+            <a href="/delete-post/{{ post.id }}/">
+                삭제
+            </a>
+
+            {% endif %}
+
         <div class="post">
 
             <div class="vote">

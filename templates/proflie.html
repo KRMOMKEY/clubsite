@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>프로필</title>
+
+    <style>
+        body{
+            font-family:Arial;
+            background:#f4f6f8;
+            margin:0;
+        }
+
+        .container{
+            width:800px;
+            margin:auto;
+            padding:30px;
+        }
+
+        .card{
+            background:white;
+            padding:30px;
+            border-radius:12px;
+            margin-bottom:20px;
+        }
+
+        .btn{
+            display:inline-block;
+            padding:10px 20px;
+            background:#3498db;
+            color:white;
+            text-decoration:none;
+            border-radius:8px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+
+    <div class="card">
+
+        <h1>👤 프로필</h1>
+
+        <p><b>아이디</b> : {{ user.username }}</p>
+
+        <p><b>가입일</b> : {{ user.date_joined }}</p>
+
+        <p><b>게시글 수</b> : {{ user_posts }}</p>
+
+        <p><b>댓글 수</b> : {{ user_comments }}</p>
+
+    </div>
+
+    <a href="/" class="btn">
+        홈으로
+    </a>
+
+</div>
+
+</body>
+</html>

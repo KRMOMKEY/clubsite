@@ -87,14 +87,39 @@
 
         .notice{
             margin:8px 0;
-            padding:8px;
+            padding:10px;
             border-bottom:1px solid #eee;
         }
 
         .hot-post{
             margin:8px 0;
-            padding:8px;
+            padding:10px;
             border-bottom:1px solid #eee;
+        }
+
+        .quick-buttons{
+            display:flex;
+            gap:10px;
+            margin-top:20px;
+            flex-wrap:wrap;
+        }
+
+        .btn{
+            text-decoration:none;
+            padding:10px 16px;
+            border-radius:8px;
+            background:#2563eb;
+            color:white;
+            font-weight:bold;
+        }
+
+        .btn:hover{
+            opacity:0.9;
+        }
+
+        .status-online{
+            color:green;
+            font-weight:bold;
         }
 
     </style>
@@ -111,10 +136,16 @@
         </div>
 
         <div class="sub">
-            Club Site 메인 페이지
+            Club Site 메인 대시보드
         </div>
 
-        
+        <div class="quick-buttons">
+            <a href="/board/" class="btn">📋 게시판</a>
+            <a href="/ranking/" class="btn">🏆 랭킹</a>
+        </div>
+
+    </div>
+
     <div class="top-grid">
 
         <div class="box">
@@ -128,16 +159,37 @@
             <p>💬 댓글 수 : {{ total_comments }}</p>
 
         </div>
+    <div class="box hot-box">
 
-        <div class="box">
+        <h3>🔥 조회수TOP5</h3>
 
-            <h3>🚀 서버 상태</h3>
+        {% for post in hot_posts %}
 
-            <p>🟢 온라인</p>
+            <div class="hot-post">
 
-            <p>☁️ Render 배포 완료</p>
+                <a href="/post/{{ post.id }}/">
 
-        </div>
+                    {{ forloop.counter }}.
+                    {{ post.title }}
+
+                </a>
+
+                <span>
+
+                    👍 {{ post.score }}
+                    · 👁 {{ post.views }}
+
+                </span>
+
+            </div>
+
+        {% empty %}
+
+            인기글이 없습니다.
+
+        {% endfor %}
+
+    </div>
     </div>
 
     <div class="top-grid">
@@ -146,8 +198,32 @@
 
             <h3>📢 공지사항</h3>
 
+            {% for notice in notices %}
+
             <div class="notice">
-                아직 공지사항이 없습니다.
+
+                <a href="/post/{{ notice.id }}/">
+
+                    📌 {{ notice.title }}
+
+                </a>
+
+            </div>
+
+            {% empty %}
+
+            <div class="notice">
+                등록된 공지사항이 없습니다.
+            </div>
+
+            {% endfor %}
+
+            <div class="notice">
+                관리자 공지 기능 예정
+            </div>
+
+            <div class="notice">
+                Render 서버 운영중
             </div>
 
         </div>
@@ -156,8 +232,34 @@
 
             <h3>🔥 인기글 TOP5</h3>
 
+            {% for post in hot_posts %}
+
             <div class="hot-post">
-                인기글 기능 준비중
+
+                <a href="/post/{{ post.id }}/">
+
+                    {{ post.title }}
+
+                </a>
+
+                (👍 {{ post.score }})
+
+            </div>
+
+            {% empty %}
+
+            <div class="hot-post">
+                게시글 없음
+            </div>
+
+            {% endfor %}
+
+            <div class="hot-post">
+                추천수 기반 정렬 예정
+            </div>
+
+            <div class="hot-post">
+                조회수 기반 정렬 예정
             </div>
 
         </div>
@@ -167,65 +269,44 @@
     <div class="menu">
 
         <a href="/board/" class="card">
-
             <h2>📋 게시판</h2>
-
-            <p>
-                게시글 및 댓글
-            </p>
-
+            <p>게시글 및 댓글</p>
         </a>
 
         <a href="/ranking/" class="card">
-
             <h2>🏆 랭킹</h2>
-
-            <p>
-                점수 확인
-            </p>
-
+            <p>점수 확인</p>
         </a>
 
-        <a href="#" class="card">
-
-            <h2>🎮 게임</h2>
-
-            <p>
-                준비중
-            </p>
-
+        <a href="/game1/" class="card">
+            <h2>🎮 게임1</h2>
+            <p>Program1</p>
         </a>
 
-        <a href="#" class="card">
+        <a href="/game2/" class="card">
+            <h2>🕹 게임2</h2>
+            <p>Program2</p>
+        </a>
+
+        <a href="/game3/" class="card">
+            <h2>🎯 게임3</h2>
+            <p>Program3</p>
+        </a>
+        
+        <a href="/profile/" class="card">
 
             <h2>👤 프로필</h2>
 
             <p>
-                준비중
+                내 활동 보기
             </p>
 
         </a>
 
         <a href="#" class="card">
-
             <h2>⚙️ 설정</h2>
-
-            <p>
-                준비중
-            </p>
-
+            <p>준비중</p>
         </a>
-
-        <a href="/admin/" class="card">
-
-            <h2>🛠 관리자</h2>
-
-            <p>
-                관리자 페이지
-            </p>
-
-        </a>
-
     </div>
 
 </div>

@@ -48,6 +48,8 @@ class Post(models.Model):
 
     is_notice = models.BooleanField(default=False)
 
+    is_hidden = models.BooleanField(default=False)
+
     # 🔥 Reddit 핵심: 점수 시스템
     score = models.IntegerField(default=0)
 

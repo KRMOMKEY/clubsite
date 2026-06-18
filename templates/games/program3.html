@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EDM Rhythm Game - Sequencer Ver</title>
+    <style>
+        :root {
+            --bg-color: #0d0e15;
+            --lane-color: #1a1c28;
+            --border-color: #ff0055;
+            --perfect-color: #00f6ff;
+            --good-color: #a3ff33;
+            --miss-color: #ff3333;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            color: #fff;
+            font-family: 'Arial', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        #game-container {
+            position: relative;
+            width: 400px;
+            height: 650px;
+            background-color: var(--lane-color);
+            border: 3px solid #2d3142;
+            border-radius: 15px;
+            box-shadow: 0 0 30px rgba(0, 0, 0, 0.8);
+            overflow: hidden;
+        }
+
+        /* 상단 UI */
+        #ui-layer {
+            position: absolute;
+            top: 20px;
+            left: 0;
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 25px;
+            box-sizing: border-box;
+            z-index: 10;
+        }
+
+        #score-board {
+            font-size: 26px;
+            font-weight: 900;
+            letter-spacing: 2px;
+            text-shadow: 0 0 10px rgba(255,255,255,0.5);
+        }
+
+        #start-btn {
+            background: linear-gradient(45deg, var(--border-color), #ff5500);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            font-size: 16px;
+            font-weight: bold;
+            border-radius: 25px;
+            cursor: pointer;
+            box-shadow: 0 0 15px var(--border-color);
+            transition: all 0.2s;
+        }
+
+        #start-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 25px var(--border-color);
+        }
+
+        /* 판정 텍스트 */
+        #judgment-display {
+            position: absolute;
+            top: 45%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 42px;
+            font-weight: 900;
+            text-transform: uppercase;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        .perfect { color: var(--perfect-color); text-shadow: 0 0 20px var(--perfect-color); }
+        .good { color: var(--good-color); text-shadow: 0 0 20px var(--good-color); }
+        .miss { color: var(--miss-color); text-shadow: 0 0 20px var(--miss-color); }
+
+        /* 플레이 구역 */
+        #play-area {
+            display: flex;
+            width: 100%;
+            height: 100%;
+            position: relative;
+        }
+
+        .lane {
+            flex: 1;
+            height: 100%;
+            position: relative;
+            border-right: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .lane:last-child { border-right: none; }
+
+        /* 판정선 */
+        #judgment-line {
+            position: absolute;
+            bottom: 90px;
+            width: 100%;
+            height: 6px;
+            background: linear-gradient(90deg, var(--perfect-color), #fff, var(--perfect-color));
+            box-shadow: 0 0 15px var(--perfect-color);
+            z-index: 5;
+        }
+
+        /* 건반 가이드 */
+        .key-guide {
+            position: absolute;
+            bottom: 0;
+            width: 100%;
+            height: 90px;
+            background: linear-gradient(180deg, rgba(20,22,34,0.9) 0%, rgba(10,11,18,1) 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 22px;
+            font-weight: bold;
+            color: #555870;
+            border-top: 2px solid #2d3142;
+            transition: all 0.05s;
+        }
+
+        .lane.active .key-guide {
+            background: linear-gradient(180deg, rgba(255, 0, 85, 0.4) 0%, rgba(255, 0, 85, 0.1) 100%);
+            color: #fff;
+            text-shadow: 0 0 10px #fff;
+        }
+
+        /* 노트 스타일 */
+        .note {
+            position: absolute;
+            left: 5%;
+            width: 90%;
+            height: 18px;
+            background: linear-gradient(90deg, #00f6ff, #0066ff);
+            border-radius: 3px;
+            box-shadow: 0 0 10px #00f6ff;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <div id="ui-layer">
+            <div id="score-board">SCORE: 0</div>
+            <button id="start-btn">START</button>
+        </div>
+
+        <div id="judgment-display"></div>
+        <div id="judgment-line"></div>
+
+        <div id="play-area">
+            <div class="lane" id="lane-0"><div class="key-guide">D</div></div>
+            <div class="lane" id="lane-1"><div class="key-guide">F</div></div>
+            <div class="lane" id="lane-2"><div class="key-guide">J</div></div>
+            <div class="lane" id="lane-3"><div class="key-guide">K</div></div>
+        </div>
+    </div>
+
+    <audio id="bgm" src="0603 이도윤 EDM (1).mp3"></audio>
+
+    <script>
+        const lanes = [
+            document.getElementById('lane-0'), document.getElementById('lane-1'),
+            document.getElementById('lane-2'), document.getElementById('lane-3')
+        ];
+        const keyMap = { 'd': 0, 'f': 1, 'j': 2, 'k': 3, 'D': 0, 'F': 1, 'J': 2, 'K': 3 };
+        
+        const scoreBoard = document.getElementById('score-board');
+        const startBtn = document.getElementById('start-btn');
+        const judgmentDisplay = document.getElementById('judgment-display');
+        const bgm = document.getElementById('bgm');
+
+        let score = 0;
+        let isPlaying = false;
+        let gameLoopId;
+        let startTime = 0;
+        let notes = [];
+        let currentNoteIndex = 0;
+
+        const judgmentLineY = 560; 
+        const noteSpeed = 6;       
+        const JUDGMENT_MS = { PERFECT: 50, GOOD: 120, MISS: 200 };
+
+        // ⏱️ 노트 한 줄(행)이 나오는 시간 간격 (234ms = 약 0.23초 간격)
+        // 이 간격을 줄이면 노트가 더 촘촘하고 빠르게 떨어집니다.
+        const stepInterval = 234; 
+
+        // 🎵 [D, F, J, K] 라인 매칭 시퀀서 채보 데이터 (0 = 없음, 1 = 노트)
+        const sequenceChart = [
+            // [0초~13초] 인트로 정박 빌드업 구간
+            [0,0,0,0], [0,0,0,0], [0,0,0,0], [0,0,0,0],
+            [1,0,0,0], [0,1,0,0], [0,0,1,0], [0,0,0,1],
+            [1,0,0,0], [0,1,0,0], [0,0,1,0], [0,0,0,1],
+            [1,0,0,0], [0,1,0,0], [0,0,1,0], [0,0,0,1],
+            [1,0,0,1], [0,0,0,0], [0,1,1,0], [0,0,0,0],
+            [1,0,1,0], [0,1,0,1], [1,0,0,0], [0,0,0,1],
+            [0,1,1,0], [0,0,0,0], [1,0,0,1], [0,0,0,0],
+
+            // [13초~25초] 1차 EDM 하이라이트 드롭 파트 (동시치기 및 난타)
+            [1,0,0,1], [0,1,1,0], [1,0,0,1], [0,1,1,0],
+            [1,1,0,0], [0,0,1,1], [1,1,0,0], [0,0,1,1],
+            [1,0,1,0], [0,1,0,1], [1,0,1,0], [0,1,0,1],
+            [1,0,0,1], [1,0,0,1], [0,1,1,0], [0,1,1,0],
+            [1,1,1,1], [0,0,0,0], [1,0,0,1], [0,0,0,0],
+            [0,1,1,0], [0,0,0,0], [1,1,1,1], [0,0,0,0],
+
+            // [25초~42초] 잔잔한 멜로디 브레이크 다운 파트
+            [1,0,0,0], [0,0,0,0], [0,1,0,0], [0,0,0,0],
+            [0,0,1,0], [0,0,0,0], [0,0,0,1], [0,0,0,0],
+            [1,0,0,1], [0,0,0,0], [0,1,1,0], [0,0,0,0],
+            [1,0,0,0], [0,1,0,0], [0,0,1,0], [0,0,0,1],
+            [0,0,0,1], [0,0,1,0], [0,1,0,0], [1,0,0,0],
+            [1,0,0,1], [0,0,0,0], [1,1,1,1], [0,0,0,0],
+
+            // [42초~58초] 2차 메인 클라이맥스 파트 (격렬한 연타 쪼개기)
+            [1,0,0,1], [0,1,0,0], [0,0,1,0], [1,0,0,1],
+            [0,1,1,0], [1,0,0,0], [0,0,0,1], [0,1,1,0],
+            [1,1,0,0], [0,1,1,0], [0,0,1,1], [1,0,0,1],
+            [1,0,0,1], [0,0,0,0], [1,1,1,1], [0,0,0,0],
+            [0,1,1,0], [1,0,0,1], [0,1,1,0], [1,0,0,1],
+            [1,1,0,0], [0,0,1,1], [1,1,0,0], [0,0,1,1],
+            [1,1,1,1], [0,0,0,0], [1,1,1,1], [0,0,0,0],
+
+            // [58초~72초] 후반부 변주 아웃트로 진입 구간
+            [1,0,0,0], [0,1,0,0], [0,0,1,0], [0,0,0,1],
+            [0,0,0,1], [0,0,1,0], [0,1,0,0], [1,0,0,0],
+            [1,0,0,1], [0,0,0,0], [0,1,1,0], [0,0,0,0],
+            [1,0,1,0], [0,1,0,1], [1,0,1,0], [0,1,0,1],
+            [1,1,0,0], [0,0,1,1], [1,1,1,1], [0,0,0,0],
+
+            // [73초~82초] 1분 22초 완곡 완성을 위한 최종 엔딩 폭타 파트
+            [1,0,0,1], [0,0,0,0], [0,1,1,0], [0,0,0,0],
+            [1,1,0,0], [0,0,1,1], [1,0,0,1], [0,1,1,0],
+            [1,0,1,0], [0,1,0,1], [1,1,1,1], [0,0,0,0],
+            [1,0,0,1], [0,1,1,0], [1,1,1,1], [0,0,0,0],
+            [1,1,1,1], [0,0,0,0], [1,1,1,1], [1,1,1,1] // 마지막 강렬한 콰광 마무리!
+        ];
+
+        // 🛠️ 중요: 0과 1 시퀀서 배열을 실제 인게임 구동용 타임스탬프 채보(chart)로 자동 변환하는 로직
+        const chart = [];
+        sequenceChart.forEach((step, stepIndex) => {
+            const calculatedTime = stepIndex * stepInterval + 1500; // 음악 싱크를 위해 1.5초 오프셋 부여
+            step.forEach((hasNote, laneIndex) => {
+                if (hasNote === 1) {
+                    chart.push({ time: calculatedTime, lane: laneIndex });
+                }
+            });
+        });
+
+        const noteTravelTime = (judgmentLineY / noteSpeed) * (1000 / 60);
+
+        startBtn.addEventListener('click', () => {
+            if (isPlaying) return;
+            resetGame();
+            startGame();
+        });
+
+        function resetGame() {
+            score = 0;
+            currentNoteIndex = 0;
+            notes.forEach(note => note.element.remove());
+            notes = [];
+            scoreBoard.innerText = `SCORE: ${score}`;
+            judgmentDisplay.innerText = '';
+            bgm.currentTime = 0;
+        }
+
+        function startGame() {
+            isPlaying = true;
+            startBtn.disabled = true;
+            startBtn.style.opacity = 0.3;
+            
+            bgm.play().then(() => {
+                startTime = performance.now();
+                gameLoopId = requestAnimationFrame(update);
+            }).catch(e => {
+                alert("음악 파일을 찾을 수 없습니다.\n\n코드 파일과 '0603 이도윤 EDM (1).mp3' 파일이 같은 폴더에 함께 있는지 확인해 주세요.");
+                endGame();
+            });
+        }
+
+        function endGame() {
+            isPlaying = false;
+            startBtn.disabled = false;
+            startBtn.style.opacity = 1;
+            cancelAnimationFrame(gameLoopId);
+            bgm.pause();
+            judgmentDisplay.innerText = "COMPLETE";
+            judgmentDisplay.className = "perfect";
+        }
+
+        function update(timestamp) {
+            if (!isPlaying) return;
+            const elapsedTime = timestamp - startTime;
+
+            while (currentNoteIndex < chart.length && chart[currentNoteIndex].time - noteTravelTime <= elapsedTime) {
+                const targetNote = chart[currentNoteIndex];
+                createNote(targetNote.lane, targetNote.time);
+                currentNoteIndex++;
+            }
+
+            for (let i = notes.length - 1; i >= 0; i--) {
+                const note = notes[i];
+                const timeProgress = elapsedTime - (note.targetTime - noteTravelTime);
+                note.y = (timeProgress / (1000 / 60)) * noteSpeed;
+                note.element.style.top = note.y + 'px';
+
+                if (elapsedTime > note.targetTime + JUDGMENT_MS.MISS) {
+                    showJudgment('Miss');
+                    note.element.remove();
+                    notes.splice(i, 1);
+                }
+            }
+
+            if (currentNoteIndex >= chart.length && notes.length === 0) {
+                setTimeout(endGame, 2000);
+                return;
+            }
+
+            gameLoopId = requestAnimationFrame(update);
+        }
+
+        function createNote(laneIndex, targetTime) {
+            const noteElement = document.createElement('div');
+            noteElement.className = 'note';
+            noteElement.style.top = '-20px';
+            lanes[laneIndex].appendChild(noteElement);
+
+            notes.push({
+                element: noteElement,
+                lane: laneIndex,
+                targetTime: targetTime,
+                y: -20
+            });
+        }
+
+        window.addEventListener('keydown', (e) => {
+            if (e.repeat) return;
+            const laneIndex = keyMap[e.key];
+            if (laneIndex !== undefined) {
+                lanes[laneIndex].classList.add('active');
+                if (isPlaying) checkHit(laneIndex);
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            const laneIndex = keyMap[e.key];
+            if (laneIndex !== undefined) {
+                lanes[laneIndex].classList.remove('active');
+            }
+        });
+
+        function checkHit(laneIndex) {
+            const elapsedTime = performance.now() - startTime;
+            const laneNotes = notes.filter(n => n.lane === laneIndex);
+            if (laneNotes.length === 0) return;
+
+            const targetNote = laneNotes[0];
+            const timeDiff = Math.abs(elapsedTime - targetNote.targetTime);
+
+            if (timeDiff <= JUDGMENT_MS.PERFECT) {
+                showJudgment('Perfect'); score += 150; removeNote(targetNote);
+            } else if (timeDiff <= JUDGMENT_MS.GOOD) {
+                showJudgment('Good'); score += 70; removeNote(targetNote);
+            } else if (timeDiff <= JUDGMENT_MS.MISS) {
+                showJudgment('Miss'); removeNote(targetNote);
+            }
+            scoreBoard.innerText = `SCORE: ${score}`;
+        }
+
+        function removeNote(note) {
+            note.element.remove();
+            const index = notes.indexOf(note);
+            if (index > -1) notes.splice(index, 1);
+        }
+
+        function showJudgment(type) {
+            judgmentDisplay.innerText = type;
+            judgmentDisplay.className = type.toLowerCase();
+            judgmentDisplay.style.animation = 'none';
+            judgmentDisplay.offsetHeight; 
+            judgmentDisplay.style.animation = null;
+        }
+    </script>
+</body>
+</html>
+

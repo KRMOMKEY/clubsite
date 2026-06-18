@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>반응속도 테스트</title>
+
+<style>
+
+body{
+    margin:0;
+    font-family:Arial;
+    background:#111;
+    color:white;
+    text-align:center;
+}
+
+.container{
+    margin-top:40px;
+}
+
+h1{
+    font-size:50px;
+}
+
+#modeText{
+    font-size:24px;
+    margin:15px;
+}
+
+#gameCount{
+    font-size:24px;
+    color:#ffd700;
+}
+
+#gameBox{
+    width:520px;
+    height:260px;
+    margin:40px auto;
+    background:#c0392b;
+    border-radius:20px;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    font-size:34px;
+    cursor:pointer;
+    user-select:none;
+    transition:0.2s;
+}
+
+button{
+    padding:12px 18px;
+    margin:5px;
+    font-size:17px;
+    border:none;
+    border-radius:10px;
+    cursor:pointer;
+}
+
+input{
+    padding:10px;
+    width:220px;
+    border:none;
+    border-radius:8px;
+    margin:5px;
+}
+
+#result{
+    font-size:28px;
+    margin-top:20px;
+}
+
+#best{
+    margin-top:15px;
+    color:#00ff99;
+    font-size:22px;
+}
+
+#scores{
+    margin-top:20px;
+    font-size:20px;
+}
+
+#ranking{
+    list-style:none;
+    padding:0;
+    margin-top:20px;
+}
+
+#ranking li{
+    background:#222;
+    margin:8px auto;
+    padding:10px;
+    width:300px;
+    border-radius:10px;
+}
+
+#commentList{
+    margin-top:20px;
+}
+
+.comment{
+    background:#222;
+    width:420px;
+    margin:10px auto;
+    padding:12px;
+    border-radius:10px;
+    text-align:left;
+}
+
+.info{
+    margin-top:10px;
+    color:#aaa;
+}
+
+.levelBox{
+    position:fixed;
+    right:20px;
+    top:120px;
+    background:#222;
+    padding:15px;
+    border-radius:15px;
+    width:220px;
+    text-align:left;
+    line-height:1.8;
+    box-shadow:0 0 10px rgba(0,0,0,0.5);
+}
+
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<h1>⚡ 반응속도 테스트</h1>
+
+<div id="modeText">현재 모드 : 기본 모드</div>
+
+<button onclick="setMode('normal')">기본 모드</button>
+<button onclick="setMode('trap')">함정 모드</button>
+<button onclick="setMode('speed')">속도 모드</button>
+
+<br>
+
+<button onclick="setInput('mouse')">🖱 마우스</button>
+<button onclick="setInput('keyboard')">⌨ 키보드</button>
+
+<div id="gameCount">진행 : 0 / 5</div>
+
+<p>
+초록색이 되면 클릭 또는 스페이스바를 누르세요.<br>
+5번 플레이 후 평균 기록이 계산됩니다.<br>
+기다리는 중 누르면 처음부터 다시 시작됩니다.
+</p>
+
+<div id="gameBox">
+누르세요!
+</div>
+
+<div id="result"></div>
+
+<div id="scores"></div>
+
+<div id="best"></div>
+
+<h2>🏆 평균 TOP 5 랭킹</h2>
+
+<ul id="ranking"></ul>
+
+<h2>💬 댓글</h2>
+
+<input type="text" id="nickname" placeholder="닉네임">
+<br>
+
+<input type="text" id="commentInput" placeholder="댓글 입력">
+
+<button onclick="addComment()">등록</button>
+
+<div id="commentList"></div>
+
+<div class="info">
+키보드 모드에서는 스페이스바 사용
+</div>
+
+<button onclick="resetBest()">기록 초기화</button>
+
+</div>
+
+<!-- 수준표 -->
+<div class="levelBox" id="levelBox">
+
+<h3 style="margin-top:0;">🏅 수준표</h3>
+
+<div id="levelContent">
+
+<b>기본 모드</b><br>
+🔥 180ms 미만 → 프로게이머<br>
+😎 250ms 미만 → 매우 빠름<br>
+🙂 350ms 미만 → 평균 이상<br>
+🐢 450ms 미만 → 평범함<br>
+💀 450ms 이상 → 연습 필요
+
+</div>
+
+</div>
+
+<script>
+
+const box=document.getElementById("gameBox");
+const result=document.getElementById("result");
+const bestText=document.getElementById("best");
+const modeText=document.getElementById("modeText");
+const gameCount=document.getElementById("gameCount");
+const scoresText=document.getElementById("scores");
+
+let waiting=false;
+let canClick=false;
+let startTime;
+let timeout;
+
+let currentMode="normal";
+let inputMode="mouse";
+
+let speedDelay=3000;
+
+let scores=[];
+let round=0;
+
+loadBest();
+loadRanking();
+loadComments();
+
+function setMode(mode){
+
+    currentMode=mode;
+
+    if(mode==="normal"){
+        modeText.innerText="현재 모드 : 기본 모드";
+    }
+
+    if(mode==="trap"){
+        modeText.innerText="현재 모드 : 함정 모드";
+    }
+
+    if(mode==="speed"){
+        modeText.innerText="현재 모드 : 속도 모드";
+    }
+
+    updateLevelBox();
+
+    resetGame();
+}
+
+function setInput(mode){
+
+    inputMode=mode;
+
+    resetGame();
+}
+
+box.addEventListener("click",()=>{
+
+    if(inputMode==="mouse"){
+        handleAction();
+    }
+
+});
+
+document.addEventListener("keydown",(e)=>{
+
+    if(inputMode==="keyboard" && e.code==="Space"){
+        e.preventDefault();
+        handleAction();
+    }
+
+});
+
+function handleAction(){
+
+    if(canClick){
+
+        let reaction=Date.now()-startTime;
+
+        scores.push(reaction);
+
+        round++;
+
+        gameCount.innerText=`진행 : ${round} / 5`;
+
+        result.innerHTML=`${round}번째 기록 : ${reaction} ms`;
+
+        updateScores();
+
+        waiting=false;
+        canClick=false;
+
+        box.style.background="#c0392b";
+
+        if(round>=5){
+
+            finishGame();
+
+            return;
+        }
+
+        setTimeout(()=>{
+
+            startRound();
+
+        },1000);
+
+        return;
+    }
+
+    if(waiting && !canClick){
+
+        clearTimeout(timeout);
+
+        box.style.background="#000";
+        box.innerText="💀 실패!";
+
+        result.innerHTML=`
+        너무 빨리 눌렀습니다!<br>
+        처음부터 다시 시작합니다.
+        `;
+
+        waiting=false;
+        canClick=false;
+
+        scores=[];
+        round=0;
+
+        gameCount.innerText="진행 : 0 / 5";
+
+        scoresText.innerHTML="";
+
+        speedDelay=3000;
+
+        setTimeout(()=>{
+
+            box.style.background="#c0392b";
+            box.innerText="다시 시작";
+
+        },1500);
+
+        return;
+    }
+
+    startRound();
+
+}
+
+function startRound(){
+
+    waiting=true;
+
+    result.innerText="";
+
+    box.style.background="#e67e22";
+    box.innerText="기다리세요...";
+
+    let delay;
+
+    if(currentMode==="speed"){
+
+        delay=speedDelay;
+
+        speedDelay-=300;
+
+        if(speedDelay<700){
+            speedDelay=700;
+        }
+
+    }
+    else if(currentMode==="trap"){
+
+        delay=Math.random()*700+200;
+
+    }
+    else{
+
+        delay=Math.random()*4000+1000;
+
+    }
+
+    timeout=setTimeout(()=>{
+
+        if(currentMode==="trap" && Math.random()<0.4){
+
+            box.style.background="#3498db";
+            box.innerText="함정! 누르면 실패";
+
+            canClick=false;
+
+            waiting=true;
+
+            setTimeout(()=>{
+
+                box.style.background="#27ae60";
+
+                if(inputMode==="mouse"){
+                    box.innerText="지금 클릭!";
+                }
+                else{
+                    box.innerText="스페이스바!";
+                }
+
+                startTime=Date.now();
+
+                canClick=true;
+
+            },3000);
+
+            return;
+        }
+
+        box.style.background="#27ae60";
+
+        if(inputMode==="mouse"){
+            box.innerText="지금 클릭!";
+        }
+        else{
+            box.innerText="스페이스바!";
+        }
+
+        startTime=Date.now();
+
+        canClick=true;
+
+    },delay);
+
+}
+
+function finishGame(){
+
+    let total=0;
+
+    scores.forEach(s=>{
+        total+=s;
+    });
+
+    let average=Math.floor(total/scores.length);
+
+    result.innerHTML=`🎉 평균 기록 : ${average} ms`;
+
+    saveBest(average);
+
+    let level="";
+
+    // 기본 모드
+    if(currentMode==="normal"){
+
+        if(average<180){
+            level="🔥 프로게이머 수준";
+        }
+        else if(average<250){
+            level="😎 매우 빠름";
+        }
+        else if(average<350){
+            level="🙂 평균 이상";
+        }
+        else if(average<450){
+            level="🐢 평범한 수준";
+        }
+        else{
+            level="💀 연습 필요";
+        }
+
+    }
+
+    // 함정 모드
+    else if(currentMode==="trap"){
+
+        if(average<220){
+            level="🧠 함정 마스터";
+        }
+        else if(average<300){
+            level="😎 매우 뛰어남";
+        }
+        else if(average<400){
+            level="🙂 평균 이상";
+        }
+        else{
+            level="💀 낚임";
+        }
+
+    }
+
+    // 속도 모드
+    else if(currentMode==="speed"){
+
+        if(average<140){
+            level="⚡ 초인 반사신경";
+        }
+        else if(average<200){
+            level="🔥 엄청 빠름";
+        }
+        else if(average<280){
+            level="😎 빠름";
+        }
+        else{
+            level="🐢 속도 적응 필요";
+        }
+
+    }
+
+    result.innerHTML += `<br>${level}`;
+
+    let name=prompt("이름 입력");
+
+    if(name){
+
+        saveRanking(name,average);
+
+        loadRanking();
+    }
+
+    box.innerText="새 게임";
+
+    round=0;
+
+    scores=[];
+
+    gameCount.innerText="진행 : 0 / 5";
+}
+
+function updateScores(){
+
+    let html="<h3>기록</h3>";
+
+    scores.forEach((s,i)=>{
+
+        html += `${i+1}번째 : ${s} ms<br>`;
+    });
+
+    scoresText.innerHTML=html;
+}
+
+function saveBest(score){
+
+    let best=localStorage.getItem("bestReaction");
+
+    if(best===null || score<best){
+
+        localStorage.setItem("bestReaction",score);
+
+        loadBest();
+    }
+}
+
+function loadBest(){
+
+    let best=localStorage.getItem("bestReaction");
+
+    if(best){
+
+        bestText.innerText=`🏆 최고 평균 기록 : ${best} ms`;
+    }
+}
+
+function resetBest(){
+
+    localStorage.removeItem("bestReaction");
+    localStorage.removeItem("rankings");
+
+    bestText.innerText="";
+    document.getElementById("ranking").innerHTML="";
+}
+
+function resetGame(){
+
+    waiting=false;
+    canClick=false;
+
+    clearTimeout(timeout);
+
+    result.innerText="";
+
+    scores=[];
+
+    round=0;
+
+    speedDelay=3000;
+
+    gameCount.innerText="진행 : 0 / 5";
+
+    scoresText.innerHTML="";
+
+    box.style.background="#c0392b";
+
+    box.innerText="누르세요!";
+}
+
+function saveRanking(name,score){
+
+    let rankings=
+        JSON.parse(localStorage.getItem("rankings")) || [];
+
+    rankings.push({
+        name:name,
+        score:score
+    });
+
+    rankings.sort((a,b)=>a.score-b.score);
+
+    rankings=rankings.slice(0,5);
+
+    localStorage.setItem(
+        "rankings",
+        JSON.stringify(rankings)
+    );
+}
+
+function loadRanking(){
+
+    let rankings=
+        JSON.parse(localStorage.getItem("rankings")) || [];
+
+    let html="";
+
+    rankings.forEach((r,i)=>{
+
+        html += `
+        <li>
+        ${i+1}등 - ${r.name}
+        (${r.score} ms)
+        </li>
+        `;
+    });
+
+    document.getElementById("ranking").innerHTML=html;
+}
+
+function addComment(){
+
+    let nickname=document.getElementById("nickname").value;
+    let comment=document.getElementById("commentInput").value;
+
+    if(nickname==="" || comment===""){
+        return;
+    }
+
+    let comments=
+        JSON.parse(localStorage.getItem("comments")) || [];
+
+    comments.unshift({
+        nickname:nickname,
+        comment:comment
+    });
+
+    localStorage.setItem(
+        "comments",
+        JSON.stringify(comments)
+    );
+
+    document.getElementById("commentInput").value="";
+
+    loadComments();
+}
+
+function loadComments(){
+
+    let comments=
+        JSON.parse(localStorage.getItem("comments")) || [];
+
+    let html="";
+
+    comments.forEach(c=>{
+
+        html += `
+        <div class="comment">
+            <strong>${c.nickname}</strong><br>
+            ${c.comment}
+        </div>
+        `;
+    });
+
+    document.getElementById("commentList").innerHTML=html;
+}
+
+function updateLevelBox(){
+
+    const levelContent=document.getElementById("levelContent");
+
+    if(currentMode==="normal"){
+
+        levelContent.innerHTML=`
+        <b>기본 모드</b><br>
+        🔥 180ms 미만 → 프로게이머<br>
+        😎 250ms 미만 → 매우 빠름<br>
+        🙂 350ms 미만 → 평균 이상<br>
+        🐢 450ms 미만 → 평범함<br>
+        💀 450ms 이상 → 연습 필요
+        `;
+    }
+
+    else if(currentMode==="trap"){
+
+        levelContent.innerHTML=`
+        <b>함정 모드</b><br>
+        🧠 220ms 미만 → 함정 마스터<br>
+        😎 300ms 미만 → 매우 뛰어남<br>
+        🙂 400ms 미만 → 평균 이상<br>
+        💀 400ms 이상 → 낚임
+        `;
+    }
+
+    else if(currentMode==="speed"){
+
+        levelContent.innerHTML=`
+        <b>속도 모드</b><br>
+        ⚡ 140ms 미만 → 초인 반사신경<br>
+        🔥 200ms 미만 → 엄청 빠름<br>
+        😎 280ms 미만 → 빠름<br>
+        🐢 280ms 이상 → 속도 적응 필요
+        `;
+    }
+
+}
+
+</script>
+
+</body>
+</html>
+

@@ -8,6 +8,7 @@ from django.core.paginator import Paginator
 
 from .models import Score, Comment, CommentLike, Post, PostLike
 from .models import Post, PostVote
+from django.contrib.auth import login
 
 # ----------------------
 # 점수
@@ -35,12 +36,21 @@ def home(request):
     total_posts = Post.objects.count()
     total_comments = Comment.objects.count()
 
+    hot_posts = Post.objects.order_by(
+        '-score',
+        '-views'
+    )[:10]
+    notices = Post.objects.filter(
+    is_notice=True
+    ).order_by('-created_at')[:5]
+
     return render(request, "home.html", {
         "total_users": total_users,
         "total_posts": total_posts,
         "total_comments": total_comments,
+        "hot_posts": hot_posts,
+        "notices": notices,
     })
-
 
 # ----------------------
 # 랭킹
@@ -58,7 +68,11 @@ def board(request):
     query = request.GET.get('q', '')
     page = request.GET.get('page')
 
-    posts = Post.objects.all()
+    posts = Post.objects.filter(
+    is_hidden=False
+    )
+    
+    
 
     # 🔍 검색
     if query:
@@ -81,7 +95,7 @@ def board(request):
         posts = posts.order_by('-is_notice', '-created_at')
 
     paginator = Paginator(posts, 10)
-    posts = paginator.get_page(page)
+    Post.objects.filter(is_hidden=False)
 
     return render(request, 'board.html', {
         'posts': posts,
@@ -213,7 +227,7 @@ def like_comment(request, comment_id):
 def delete_post(request, post_id):
     post = get_object_or_404(Post, id=post_id)
 
-    if request.user == post.user:
+    if request.user == post.user or request.user.is_staff:
         post.delete()
 
     return redirect('/board/')
@@ -309,3 +323,141 @@ def vote_post(request, post_id):
         "success": True,
         "score": post.score
     })
+
+def signup(request):
+
+    if request.method == "POST":
+
+        username = request.POST.get("username", "").strip()
+        password = request.POST.get("password", "").strip()
+
+        if not username or not password:
+            return render(request, "signup.html", {
+                "error": "모든 항목을 입력하세요."
+            })
+
+        if User.objects.filter(username=username).exists():
+            return render(request, "signup.html", {
+                "error": "이미 존재하는 아이디입니다."
+            })
+
+        user = User.objects.create_user(
+            username=username,
+            password=password
+        )
+
+        login(request, user)
+
+        return redirect('/')
+
+    return render(request, "signup.html")
+
+
+@login_required
+def profile(request):
+
+    user_posts = Post.objects.filter(
+        user=request.user
+    ).count()
+
+    user_comments = Comment.objects.filter(
+        user=request.user
+    ).count()
+
+    return render(request, "profile.html", {
+        "user_posts": user_posts,
+        "user_comments": user_comments,
+    })
+
+
+@login_required
+def profile(request):
+
+    my_posts = Post.objects.filter(
+        user=request.user
+    ).order_by('-created_at')
+
+    my_comments = Comment.objects.filter(
+        user=request.user
+    )
+
+    total_score = sum(
+        post.score for post in my_posts
+    )
+
+    return render(request, 'profile.html', {
+        'my_posts': my_posts[:10],
+        'post_count': my_posts.count(),
+        'comment_count': my_comments.count(),
+        'total_score': total_score,
+    })
+
+@login_required
+def promote_user(request, user_id):
+
+    if not request.user.is_superuser:
+        return redirect('/')
+
+    user = User.objects.get(id=user_id)
+
+    user.is_staff = True
+    user.save()
+
+    return redirect('/admin-panel/')
+
+@login_required
+def demote_user(request, user_id):
+
+    if not request.user.is_superuser:
+        return redirect('/')
+
+    user = User.objects.get(id=user_id)
+
+    user.is_staff = False
+    user.save()
+
+    return redirect('/admin-panel/')
+
+@login_required
+def hide_post(request, post_id):
+
+    if not request.user.is_staff:
+        return redirect('/')
+
+    post = get_object_or_404(
+        Post,
+        id=post_id
+    )
+
+    post.is_hidden = True
+    post.save()
+
+    return redirect('/board/')
+
+@login_required
+def unhide_post(request, post_id):
+
+    if not request.user.is_staff:
+        return redirect('/')
+
+    post = get_object_or_404(
+        Post,
+        id=post_id
+    )
+
+    post.is_hidden = False
+    post.save()
+
+    return redirect('/board/')
+
+
+def game1(request):
+    return render(request, "games/program1.html")
+
+
+def game2(request):
+    return render(request, "games/program2.html")
+
+
+def game3(request):
+    return render(request, "games/program3.html")

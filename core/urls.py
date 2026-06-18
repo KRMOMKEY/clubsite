@@ -17,4 +17,11 @@ urlpatterns = [
     path('comment-like/<int:comment_id>/', views.like_comment),
     path('post-like/<int:post_id>/', views.like_post),
     path('vote-post/<int:post_id>/', views.vote_post),
+    path('signup/', views.signup),
+    path('profile/', views.profile),
+    path('hide-post/<int:post_id>/', views.hide_post),
+    path('unhide-post/<int:post_id>/',views.unhide_post),
+    path('game1/', views.game1),
+    path('game2/', views.game2),
+    path('game3/', views.game3),
 ]

@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>심연의 미궁: 무한의 시련</title>
+    <style>
+        body { background-color: #020205; margin: 0; overflow: hidden; font-family: 'Malgun Gothic', sans-serif; user-select: none; }
+        canvas { display: block; }
+        
+        .ui-container { position: fixed; top: 20px; left: 20px; z-index: 10; pointer-events: none; display: flex; flex-direction: column; gap: 10px; }
+        .level-display { color: #f1c40f; font-size: 28px; font-weight: bold; text-shadow: 0 0 10px rgba(241, 196, 15, 0.5), 2px 2px 4px #000; }
+        .timer { color: #ff4757; font-size: 18px; font-weight: bold; text-shadow: 0 0 8px #000; }
+        .climate-badge { display: inline-block; padding: 6px 12px; border-radius: 20px; font-weight: bold; font-size: 14px; text-shadow: 1px 1px 2px #000; box-shadow: 0 0 10px rgba(0,0,0,0.5); width: fit-content; }
+        
+        #stamina-wrapper { position: fixed; left: 25px; top: 180px; width: 24px; height: 250px; background: rgba(20,20,30,0.8); border: 3px solid #3d4a5d; border-radius: 12px; overflow: hidden; z-index: 10; }
+        #stamina-bar { width: 100%; height: 100%; background: linear-gradient(to top, #27ae60, #2ecc71); transform-origin: bottom; }
+        #stamina-text { position: fixed; left: 27px; top: 440px; color: #2ecc71; font-size: 11px; font-weight: bold; text-shadow: 1px 1px 2px #000; }
+        
+        .level-up-msg { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #2ecc71; font-size: 60px; font-weight: bold; display: none; text-shadow: 0 0 20px rgba(46, 204, 113, 0.8), 3px 3px 5px #000; z-index: 100; animation: pulse 0.5s infinite alternate; }
+        #minimap { position: fixed; top: 20px; right: 20px; width: 180px; height: 180px; background: rgba(5,5,10,0.95); border: 3px solid #4a5768; border-radius: 10px; }
+        
+        @keyframes pulse {
+            from { transform: translate(-50%, -50%) scale(0.95); }
+            to { transform: translate(-50%, -50%) scale(1.05); }
+        }
+    </style>
+</head>
+<body>
+    <div class="ui-container">
+        <div id="levelDisplay" class="level-display">STAGE LEVEL 1</div>
+        <div id="timerDisplay" class="timer">지각 변동까지: 300s</div>
+        <div id="climateDisplay" class="climate-badge">기후 분석 중...</div>
+    </div>
+
+    <div id="stamina-wrapper"> <div id="stamina-bar"></div> </div>
+    <div id="stamina-text">STAMINA</div>
+    <div id="levelUpMsg" class="level-up-msg">NEXT LEVEL 진입!</div>
+    <canvas id="minimap"></canvas>
+    <canvas id="gameCanvas"></canvas>
+
+<script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    const mCanvas = document.getElementById("minimap");
+    const mCtx = mCanvas.getContext("2d");
+    
+    const levelDisplay = document.getElementById("levelDisplay");
+    const timerDisplay = document.getElementById("timerDisplay");
+    const climateDisplay = document.getElementById("climateDisplay");
+    const staminaBar = document.getElementById("stamina-bar");
+    const levelUpMsg = document.getElementById("levelUpMsg");
+
+    const mazeW = 49, mazeH = 49, tileSize = 60;
+    const SHUFFLE_TIME = 300;
+
+    let currentLevel = 1;
+
+    let maze = [];      
+    let climateMap = []; 
+    let decorMap = []; 
+    let visited = [];
+    let keys = {};
+    let lastTime = 0;
+    let shuffleTimer = SHUFFLE_TIME;
+    let isTransitioning = false; 
+
+    let dashTrails = [];
+    let calves = [];
+    let rats = [];
+    let roomCenters = []; 
+
+    const BASE_CLIMATES = {
+        0: { name: '표준', color: '#6c5ce7', fogColor: 'rgba(3, 4, 15,', desc: '안전 구역', radius: 380 },
+        1: { name: '습함', color: '#3498db', fogColor: 'rgba(12, 28, 40,', desc: '시야 극도 제한', radius: 160 },
+        2: { name: '더움', color: '#e74c3c', fogColor: 'rgba(35, 12, 15,', desc: '열사병 (스태미나 급감)', radius: 350 },
+        3: { name: '추움', color: '#74b9ff', fogColor: 'rgba(12, 30, 42,', desc: '동상 (이동속도 저하)', radius: 320 },
+        4: { name: '건조', color: '#f39c12', fogColor: 'rgba(32, 22, 10,', desc: '탈수 (회복력 무력화)', radius: 360 }
+    };
+    let CLIMATES = JSON.parse(JSON.stringify(BASE_CLIMATES));
+    let currentClimate = CLIMATES[0];
+
+    let stamina = 100;
+    let slowDebuffTimer = 0; 
+
+    let player = { gridX: 2, gridY: 2, x: 0, y: 0, targetX: 0, targetY: 0, isMoving: false, baseSpeed: 220, progress: 0, dir: 's', isRunning: false };
+    let enemy = { gridX: 0, gridY: 0, x: 0, y: 0, targetX: 0, targetY: 0, isMoving: false, baseSpeed: 185, progress: 0, senseRange: 15, dir: 's', recentCells: [] };
+
+    let exitGridX = 0, exitGridY = 0;
+
+    function initGame(resetLevel = false) {
+        canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+        mCanvas.width = 180; mCanvas.height = 180;
+        
+        if (resetLevel) currentLevel = 1;
+        
+        isTransitioning = false;
+        levelUpMsg.style.display = "none";
+        levelDisplay.innerText = `STAGE LEVEL ${currentLevel}`;
+        
+        shuffleTimer = SHUFFLE_TIME;
+        stamina = 100; 
+        slowDebuffTimer = 0;
+        dashTrails = []; 
+        calves = []; 
+        rats = []; 
+        roomCenters = [];
+
+        generateGridRoomMaze();
+        generateClimateZonesFlood(); 
+        applyLevelScaling(); 
+        
+        updateVisited();
+        lastTime = performance.now();
+        requestAnimationFrame(gameLoop);
+    }
+
+    // 완전히 막히는 방이 없도록 맵 생성 방식 개선
+    function generateGridRoomMaze() {
+        maze = Array.from({length: mazeH}, () => Array(mazeW).fill(1));
+        decorMap = Array.from({length: mazeH}, () => Array(mazeW).fill(0));
+        visited = Array.from({length: mazeH}, () => Array(mazeW).fill(false));
+
+        const roomSize = 3, wallSize = 1, step = roomSize + wallSize; 
+        let roomsCountX = Math.floor((mazeW - wallSize) / step);
+        let roomsCountY = Math.floor((mazeH - wallSize) / step);
+
+        // 1. 기본 방들 배치
+        for (let ry = 0; ry < roomsCountY; ry++) {
+            for (let rx = 0; rx < roomsCountX; rx++) {
+                let startX = wallSize + rx * step;
+                let startY = wallSize + ry * step;
+                for (let y = startY; y < startY + roomSize; y++) {
+                    for (let x = startX; x < startX + roomSize; x++) {
+                        maze[y][x] = 0;
+                        if (Math.random() < 0.15) decorMap[y][x] = 1;
+                        else if (Math.random() < 0.03) decorMap[y][x] = 2;
+                    }
+                }
+                roomCenters.push({ x: startX + 1, y: startY + 1 });
+            }
+        }
+
+        // 2. 길 생성 확률 대폭 상향 (벽을 최소 1개 이상 무조건 뚫도록 설정 가중치 부여)
+        const breakOptions = [1, 1, 2, 2, 2, 3]; // 0(안 뚫음)을 제거하여 무조건 통로 확보
+        for (let ry = 0; ry < roomsCountY; ry++) {
+            for (let rx = 0; rx < roomsCountX; rx++) {
+                let startX = wallSize + rx * step;
+                let startY = wallSize + ry * step;
+
+                if (rx < roomsCountX - 1) {
+                    let wallX = startX + roomSize;
+                    breakWallCells(wallX, startY, breakOptions[Math.floor(Math.random() * breakOptions.length)], true);
+                }
+                if (ry < roomsCountY - 1) {
+                    let wallY = startY + roomSize;
+                    breakWallCells(startX, wallY, breakOptions[Math.floor(Math.random() * breakOptions.length)], false);
+                }
+            }
+        }
+
+        let exRoomX = wallSize + (roomsCountX - 1) * step;
+        let exRoomY = wallSize + (roomsCountY - 1) * step;
+        exitGridX = exRoomX + 1; exitGridY = exRoomY + 1;
+        maze[exitGridY][exitGridX] = 2; 
+
+        // 3. 고립된 컴포넌트 전체 연결 보장 (모든 사면이 벽인 방 강제 오픈 검사)
+        ensureConnectivityAndOpenIsolated(roomsCountX, roomsCountY, step, wallSize);
+
+        player.gridX = 2; player.gridY = 2;
+        player.x = player.targetX = player.gridX * tileSize + tileSize/2;
+        player.y = player.targetY = player.gridY * tileSize + tileSize/2;
+        player.isMoving = false;
+    }
+
+    function breakWallCells(startX, startY, count, isVerticalWall) {
+        if (count === 0) return;
+        if (startX <= 0 || startX >= mazeW - 1 || startY <= 0 || startY >= mazeH - 1) return;
+
+        if (count === 1) {
+            if (isVerticalWall) maze[startY + 1][startX] = 0;
+            else maze[startY][startX + 1] = 0;
+        } else if (count === 2) {
+            let rand = Math.random() < 0.5 ? [0, 1] : [1, 2];
+            for(let idx of rand) {
+                if (isVerticalWall) maze[startY + idx][startX] = 0;
+                else maze[startY][startX + idx] = 0;
+            }
+        } else if (count === 3) {
+            for(let i = 0; i < 3; i++) {
+                if (isVerticalWall) maze[startY + i][startX] = 0;
+                else maze[startY][startX + i] = 0;
+            }
+        }
+    }
+
+    // [핵심 기능 강화] 플레이어 위치에서 갈 수 없는 모든 독립된 방을 검출해서 강제로 길을 내줌
+    function ensureConnectivityAndOpenIsolated(rcX, rcY, step, wallSize) {
+        let startX = 2, startY = 2;
+        let queue = [{x: startX, y: startY}];
+        let visitedNodes = Array.from({length: mazeH}, () => Array(mazeW).fill(false));
+        visitedNodes[startY][startX] = true;
+
+        // 메인 플러드 필링 탐색
+        while(queue.length > 0) {
+            let curr = queue.shift();
+            let dirs = [[0,-1],[0,1],[-1,0],[1,0]];
+            for(let [ox, oy] of dirs) {
+                let nx = curr.x + ox, ny = curr.y + oy;
+                if(nx >= 0 && nx < mazeW && ny >= 0 && ny < mazeH) {
+                    if(!visitedNodes[ny][nx] && maze[ny][nx] !== 1) {
+                        visitedNodes[ny][nx] = true;
+                        queue.push({x: nx, y: ny});
+                    }
+                }
+            }
+        }
+
+        // 전체 방 노드들을 순회하면서 방문되지 않은(고립된) 방 중심이 있다면 강제로 주변 벽 격파
+        for (let ry = 0; ry < rcY; ry++) {
+            for (let rx = 0; rx < rcX; rx++) {
+                let rCenterX = wallSize + rx * step + 1;
+                let rCenterY = wallSize + ry * step + 1;
+                
+                // 만약 이 방이 메인 통로와 연결되지 않았다면 (고립 상태)
+                if (!visitedNodes[rCenterY][rCenterX]) {
+                    // 오른쪽이나 아래쪽 벽을 무조건 허물어 강제 연결 고리를 형성
+                    if(rx < rcX - 1) {
+                        maze[rCenterY][wallSize + rx * step + 3] = 0;
+                        maze[rCenterY - 1][wallSize + rx * step + 3] = 0;
+                    }
+                    if(ry < rcY - 1) {
+                        maze[wallSize + ry * step + 3][rCenterX] = 0;
+                        maze[wallSize + ry * step + 3][rCenterX - 1] = 0;
+                    }
+                }
+            }
+        }
+    }
+
+    function generateClimateZonesFlood() {
+        climateMap = Array.from({length: mazeH}, () => Array(mazeW).fill(0));
+        let activeClimates = [1, 2, 3, 4];
+        let floodQueues = { 1: [], 2: [], 3: [], 4: [] };
+        
+        let sources = [];
+        const MIN_DISTANCE = 16;
+        for(let type of activeClimates) {
+            let sx, sy, valid, attempts = 0;
+            do {
+                valid = true;
+                sx = Math.floor(Math.random() * (mazeW - 6)) + 3;
+                sy = Math.floor(Math.random() * (mazeH - 6)) + 3;
+                attempts++;
+                if(maze[sy][sx] === 1) { valid = false; continue; }
+                for(let src of sources) {
+                    let d = Math.sqrt(Math.pow(src.x - sx, 2) + Math.pow(src.y - sy, 2));
+                    if(d < MIN_DISTANCE) { valid = false; break; }
+                }
+            } while(!valid && attempts < 100);
+
+            sources.push({x: sx, y: sy, type: type});
+            climateMap[sy][sx] = type;
+            floodQueues[type].push({x: sx, y: sy, depth: 0});
+        }
+
+        const MAX_FLOOD_DEPTH = 18; 
+        for(let type of activeClimates) {
+            let q = floodQueues[type];
+            while(q.length > 0) {
+                let curr = q.shift();
+                if(curr.depth >= MAX_FLOOD_DEPTH) continue;
+
+                let dirs = [[0,-1],[0,1],[-1,0],[1,0]];
+                for(let [ox, oy] of dirs) {
+                    let nx = curr.x + ox, ny = curr.y + oy;
+                    if(nx > 0 && nx < mazeW - 1 && ny > 0 && ny < mazeH - 1) {
+                        if(maze[ny][nx] === 0 && climateMap[ny][nx] === 0 && Math.random() < 0.75) {
+                            climateMap[ny][nx] = type;
+                            q.push({x: nx, y: ny, depth: curr.depth + 1});
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    function applyLevelScaling() {
+        let growthLevel = Math.min(10, currentLevel);
+
+        let calculatedSpeed = Math.max(95, 185 - (growthLevel - 1) * 10); 
+        let calculatedSense = Math.min(99, 15 + (growthLevel - 1) * 9);   
+
+        let centerRoomNode = roomCenters[Math.floor(roomCenters.length / 2)];
+        enemy.baseSpeed = calculatedSpeed;
+        enemy.senseRange = calculatedSense;
+        enemy.gridX = centerRoomNode.x; enemy.gridY = centerRoomNode.y;
+        enemy.x = enemy.targetX = enemy.gridX * tileSize + tileSize/2;
+        enemy.y = enemy.targetY = enemy.gridY * tileSize + tileSize/2;
+        enemy.isMoving = false;
+        enemy.recentCells = [];
+
+        let ratCount = growthLevel - 1; 
+        let calfCount = Math.floor(growthLevel / 5); 
+
+        let validNodes = roomCenters.filter(node => 
+            !(node.x === 2 && node.y === 2) && 
+            !(node.x === enemy.gridX && node.y === enemy.gridY) &&
+            !(node.x === exitGridX && node.y === exitGridY)
+        );
+        validNodes.sort(() => Math.random() - 0.5);
+
+        for (let i = 0; i < ratCount; i++) {
+            let node = validNodes[i % validNodes.length];
+            if (!node) continue;
+            rats.push({
+                gridX: node.x, gridY: node.y,
+                x: node.x * tileSize + tileSize/2, y: node.y * tileSize + tileSize/2,
+                targetX: node.x * tileSize + tileSize/2, targetY: node.y * tileSize + tileSize/2,
+                isMoving: false, speed: 150, progress: 0, isAlerting: false
+            });
+        }
+
+        for (let i = 0; i < calfCount; i++) {
+            let node = validNodes[(i + ratCount) % validNodes.length]; 
+            if (!node) continue;
+            calves.push({
+                gridX: node.x, gridY: node.y,
+                x: node.x * tileSize + tileSize/2, y: node.y * tileSize + tileSize/2,
+                targetX: node.x * tileSize + tileSize/2, targetY: node.y * tileSize + tileSize/2,
+                isMoving: false, progress: 0, speed: 320, dir: 's'
+            });
+        }
+
+        CLIMATES = JSON.parse(JSON.stringify(BASE_CLIMATES)); 
+        if (currentLevel >= 11) {
+            let envFactor = Math.min(1, (currentLevel - 11) / 4); 
+            for (let key in CLIMATES) {
+                let reduction = CLIMATES[key].radius * 0.6 * envFactor;
+                CLIMATES[key].radius = Math.max(70, CLIMATES[key].radius - reduction);
+            }
+            levelDisplay.style.color = "#ff4757";
+            levelDisplay.innerText = `STAGE LEVEL ${currentLevel} (재앙 발동)`;
+        } else {
+            levelDisplay.style.color = "#f1c40f";
+        }
+    }
+
+    function updateVisited() {
+        for(let y = player.gridY-5; y <= player.gridY+5; y++) {
+            for(let x = player.gridX-5; x <= player.gridX+5; x++) {
+                if(y >= 0 && y < mazeH && x >= 0 && x < mazeW) visited[y][x] = true;
+            }
+        }
+    }
+
+    function nextLevelTransition() {
+        isTransitioning = true;
+        levelUpMsg.style.display = "block";
+        setTimeout(() => {
+            currentLevel++;
+            initGame(false);
+        }, 1500);
+    }
+
+    function update(dt) {
+        if (isTransitioning) return;
+        if (dt > 100) dt = 16;
+        
+        shuffleTimer -= dt / 1000;
+        if (shuffleTimer <= 0) { initGame(true); return; } 
+        timerDisplay.innerText = `지각 변동까지: ${Math.ceil(shuffleTimer)}s`;
+
+        if (slowDebuffTimer > 0) slowDebuffTimer -= dt;
+
+        let currentTileClimate = climateMap[player.gridY][player.gridX];
+        currentClimate = CLIMATES[currentTileClimate];
+        
+        let descText = currentClimate.desc;
+        if (currentLevel >= 11) descText += " [디버프 극대화]";
+        climateDisplay.innerText = `현재 구역 기후: ${currentClimate.name} (${descText})`;
+        climateDisplay.style.backgroundColor = currentClimate.color;
+
+        let isMovingInput = keys['w'] || keys['s'] || keys['a'] || keys['d'] || keys['arrowup'] || keys['arrowdown'] || keys['arrowleft'] || keys['arrowright'];
+        player.isRunning = keys[' '] && isMovingInput && stamina > 5;
+        
+        let hotDamage = 6.0;
+        if (currentLevel >= 11) hotDamage += (currentLevel - 11) * 3.5;
+        if (currentClimate.name === '더움') stamina -= (dt / 1000) * hotDamage; 
+
+        if (player.isRunning) {
+            stamina -= (dt / 1000) * 24;
+            if(stamina < 0) { stamina = 0; player.isRunning = false; }
+            dashTrails.push({ x: player.x, y: player.y, alpha: 0.5, dir: player.dir });
+        } else {
+            let regMod = currentClimate.name === '건조' ? (currentLevel >= 11 ? 0.02 : 0.15) : 1.0;
+            stamina += (dt / 1000) * (isMovingInput ? 12 : 35) * regMod;
+            if(stamina > 100) stamina = 100;
+        }
+        staminaBar.style.transform = `scaleY(${stamina / 100})`;
+
+        for (let i = dashTrails.length - 1; i >= 0; i--) {
+            dashTrails[i].alpha -= dt / 350;
+            if (dashTrails[i].alpha <= 0) dashTrails.splice(i, 1);
+        }
+
+        let coldSpeedMod = 1.6;
+        if (currentLevel >= 11) coldSpeedMod += (currentLevel - 11) * 0.25;
+        let currentBaseSpeed = currentClimate.name === '추움' ? player.baseSpeed * coldSpeedMod : player.baseSpeed;
+        if (slowDebuffTimer > 0) currentBaseSpeed *= 1.5; 
+        let activeSpeed = player.isRunning ? currentBaseSpeed * 0.55 : currentBaseSpeed;
+
+        if (!player.isMoving) {
+            let dx=0, dy=0;
+            if(keys['w']||keys['arrowup']) { dy=-1; player.dir = 'n'; }
+            else if(keys['s']||keys['arrowdown']) { dy=1; player.dir = 's'; }
+            else if(keys['a']||keys['arrowleft']) { dx=-1; player.dir = 'w'; }
+            else if(keys['d']||keys['arrowright']) { dx=1; player.dir = 'e'; }
+            
+            if (dx!==0 || dy!==0) {
+                let nx = player.gridX + dx, ny = player.gridY + dy;
+                if (ny>=0 && ny<mazeH && nx>=0 && nx<mazeW && maze[ny][nx] !== 1) {
+                    let isBlockedByCalf = calves.some(c => c.gridX === nx && c.gridY === ny);
+                    if(!isBlockedByCalf) {
+                        player.isMoving=true; player.progress=0;
+                        player.startX=player.x; player.startY=player.y;
+                        player.targetX=nx*tileSize+tileSize/2; player.targetY=ny*tileSize+tileSize/2;
+                        player.gridX=nx; player.gridY=ny;
+                    }
+                }
+            }
+        }
+        if (player.isMoving) {
+            player.progress += dt / activeSpeed;
+            if (player.progress>=1) {
+                player.isMoving=false; player.x=player.targetX; player.y=player.targetY;
+                updateVisited();
+                if(maze[player.gridY][player.gridX] === 2) { nextLevelTransition(); }
+            } else {
+                player.x=player.startX+(player.targetX-player.startX)*player.progress;
+                player.y=player.startY+(player.targetY-player.startY)*player.progress;
+            }
+        }
+
+        // 쥐 움직임 연산
+        for(let i = rats.length - 1; i >= 0; i--) {
+            let r = rats[i];
+            let manhattanDist = Math.abs(player.gridX - r.gridX) + Math.abs(player.gridY - r.gridY);
+            if(manhattanDist <= 3) {
+                enemy.senseRange = 99; 
+                r.isAlerting = true; 
+            } else {
+                r.isAlerting = false;
+            }
+
+            if(!r.isMoving) {
+                let dirs = [[0,-1],[0,1],[-1,0],[1,0]].sort(()=>Math.random()-0.5);
+                for(let [ox, oy] of dirs) {
+                    let tx = r.gridX + ox, ty = r.gridY + oy;
+                    if(tx>=0 && tx<mazeW && ty>=0 && ty<mazeH && maze[ty][tx] === 0) {
+                        r.isMoving = true; r.progress = 0;
+                        r.startX = r.x; r.startY = r.y;
+                        r.targetX = tx * tileSize + tileSize/2; r.targetY = ty * tileSize + tileSize/2;
+                        r.gridX = tx; r.gridY = ty;
+                        break;
+                    }
+                }
+            } else {
+                r.progress += dt / r.speed;
+                if(r.progress >= 1) { r.isMoving = false; r.x = r.targetX; r.y = r.targetY; }
+                else { r.x = r.startX + (r.targetX - r.startX)*r.progress; r.y = r.startY + (r.targetY - r.startY)*r.progress; }
+            }
+        }
+
+        // 양 움직임 연산
+        for(let c of calves) {
+            let pDist = Math.abs(player.gridX - c.gridX) + Math.abs(player.gridY - c.gridY);
+            if(pDist <= 1) slowDebuffTimer = 2500; 
+
+            let calfCurrentTileClimate = climateMap[c.gridY][c.gridX];
+            let activeCalfSpeed = (calfCurrentTileClimate === 3) ? c.speed * 1.78 : c.speed; 
+
+            if (!c.isMoving) {
+                let nX = c.gridX, nY = c.gridY;
+                let possibleMoves = [];
+                let directions = [{dx:0, dy:-1, dir:'n'}, {dx:0, dy:1, dir:'s'}, {dx:-1, dy:0, dir:'w'}, {dx:1, dy:0, dir:'e'}];
+                
+                for (let d of directions) {
+                    let tx = c.gridX + d.dx, ty = c.gridY + d.dy;
+                    if (ty >= 0 && tx >= 0 && ty < mazeH && tx < mazeW && maze[ty][tx] !== 1) {
+                        let isEntityThere = (enemy.gridX === tx && enemy.gridY === ty) || calves.some(other => other !== c && other.gridX === tx && other.gridY === ty);
+                        if(!isEntityThere) {
+                            possibleMoves.push({x: tx, y: ty, dist: Math.abs(player.gridX - tx) + Math.abs(player.gridY - ty), dir: d.dir});
+                        }
+                    }
+                }
+                if (possibleMoves.length > 0) {
+                    possibleMoves.sort((a, b) => a.dist - b.dist);
+                    nX = possibleMoves[0].x; nY = possibleMoves[0].y; c.dir = possibleMoves[0].dir;
+                    
+                    c.isMoving = true; c.progress = 0; c.startX = c.x; c.startY = c.y;
+                    c.targetX = nX * tileSize + tileSize/2; c.targetY = nY * tileSize + tileSize/2;
+                    c.gridX = nX; c.gridY = nY;
+                }
+            }
+
+            if (c.isMoving) {
+                c.progress += dt / activeCalfSpeed; 
+                if (c.progress >= 1) { c.isMoving = false; c.x = c.targetX; c.y = c.targetY; }
+                else { c.x = c.startX + (c.targetX - c.startX) * c.progress; c.y = c.startY + (c.targetY - c.startY) * c.progress; }
+            }
+        }
+
+        // 미노타우르스 인공지능
+        if (!enemy.isMoving) {
+            let pDist = Math.sqrt(Math.pow(player.gridX - enemy.gridX, 2) + Math.pow(player.gridY - enemy.gridY, 2));
+            let nextGridTarget = { x: enemy.gridX, y: enemy.gridY };
+
+            let directions = [{dx:0, dy:-1, dir:'n'}, {dx:0, dy:1, dir:'s'}, {dx:-1, dy:0, dir:'w'}, {dx:1, dy:0, dir:'e'}];
+            let viableMoves = [];
+
+            for(let d of directions) {
+                let tx = enemy.gridX + d.dx, ty = enemy.gridY + d.dy;
+                if(ty >= 0 && tx >= 0 && ty < mazeH && tx < mazeW && maze[ty][tx] !== 1) {
+                    let mDist = Math.abs(player.gridX - tx) + Math.abs(player.gridY - ty);
+                    let isRecent = enemy.recentCells.some(c => c.x === tx && c.y === ty);
+                    viableMoves.push({ x: tx, y: ty, dist: mDist, dir: d.dir, isRecent: isRecent });
+                }
+            }
+
+            if (viableMoves.length > 0) {
+                if (pDist < enemy.senseRange) {
+                    let freshMoves = viableMoves.filter(m => !m.isRecent);
+                    let finalChoices = freshMoves.length > 0 ? freshMoves : viableMoves;
+                    finalChoices.sort((a, b) => a.dist - b.dist);
+                    nextGridTarget.x = finalChoices[0].x; nextGridTarget.y = finalChoices[0].y;
+                    enemy.dir = finalChoices[0].dir;
+                } else {
+                    let freshMoves = viableMoves.filter(m => !m.isRecent);
+                    let finalChoices = freshMoves.length > 0 ? freshMoves : viableMoves;
+                    let choice = finalChoices[Math.floor(Math.random() * finalChoices.length)];
+                    nextGridTarget.x = choice.x; nextGridTarget.y = choice.y;
+                    enemy.dir = choice.dir;
+                }
+            }
+
+            if(nextGridTarget.x !== enemy.gridX || nextGridTarget.y !== enemy.gridY) {
+                enemy.recentCells.push({ x: enemy.gridX, y: enemy.gridY });
+                if(enemy.recentCells.length > 3) { enemy.recentCells.shift(); } 
+
+                enemy.isMoving = true; enemy.progress = 0; enemy.startX = enemy.x; enemy.startY = enemy.y;
+                enemy.targetX = nextGridTarget.x * tileSize + tileSize/2; enemy.targetY = nextGridTarget.y * tileSize + tileSize/2;
+                enemy.gridX = nextGridTarget.x; enemy.gridY = nextGridTarget.y;
+            }
+        }
+
+        if (enemy.isMoving) {
+            enemy.progress += dt / enemy.baseSpeed; 
+            if (enemy.progress >= 1) { enemy.isMoving = false; enemy.x = enemy.targetX; enemy.y = enemy.targetY; }
+            else { enemy.x = enemy.startX + (enemy.targetX - enemy.startX) * enemy.progress; enemy.y = enemy.startY + (enemy.targetY - enemy.startY) * enemy.progress; }
+        }
+        
+        if(player.gridX === enemy.gridX && player.gridY === enemy.gridY) {
+            alert(`미노타우르스에게 사냥당했습니다!\n최종 생존 단계: STAGE ${currentLevel}`); 
+            initGame(true);
+        }
+    }
+
+    function drawPlayerCharacter(x, y, dir, alpha = 1) {
+        ctx.save(); ctx.translate(x, y); ctx.globalAlpha = alpha;
+        ctx.fillStyle = "#2c3e50"; ctx.fillRect(-12, 4, 24, 14);
+        ctx.fillStyle = "#ffdfba"; ctx.beginPath(); ctx.arc(0, -6, 14, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = "#e67e22"; ctx.beginPath(); ctx.arc(0, -10, 15, Math.PI, 0); ctx.fill(); ctx.fillRect(-15, -10, 30, 6);
+        ctx.restore();
+    }
+
+    function draw() {
+        let shakeX = 0, shakeY = 0;
+        if(currentLevel >= 10) { 
+            shakeX = (Math.random() - 0.5) * 6; 
+            shakeY = (Math.random() - 0.5) * 6; 
+        }
+
+        ctx.fillStyle = "#010103"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+        const camX = canvas.width/2 - player.x + shakeX, camY = canvas.height/2 - player.y + shakeY;
+        ctx.save(); ctx.translate(camX, camY);
+
+        const x1 = Math.floor((player.x - canvas.width/2)/tileSize) - 1;
+        const x2 = x1 + Math.ceil(canvas.width/tileSize) + 2;
+        const y1 = Math.floor((player.y - canvas.height/2)/tileSize) - 1;
+        const y2 = y1 + Math.ceil(canvas.height/tileSize) + 2;
+
+        for (let y = Math.max(0, y1); y < Math.min(mazeH, y2); y++) {
+            for (let x = Math.max(0, x1); x < Math.min(mazeW, x2); x++) {
+                const xp = x * tileSize, yp = y * tileSize;
+                
+                if (maze[y][x] === 1) {
+                    ctx.fillStyle = "#1e242d"; ctx.fillRect(xp, yp, tileSize, tileSize);
+                    ctx.strokeStyle = "#12161c"; ctx.lineWidth = 3;
+                    ctx.strokeRect(xp, yp, tileSize, tileSize);
+                    ctx.beginPath(); ctx.moveTo(xp, yp + tileSize/2); ctx.lineTo(xp + tileSize, yp + tileSize/2); ctx.stroke();
+                    ctx.fillStyle = "#333f4f"; ctx.fillRect(xp, yp, tileSize, 6);
+                } else {
+                    let baseColor = "#151922";
+                    if(maze[y][x] === 2) baseColor = "#1a4666"; 
+                    ctx.fillStyle = baseColor; ctx.fillRect(xp, yp, tileSize, tileSize);
+
+                    if (maze[y][x] !== 2) {
+                        ctx.strokeStyle = "rgba(255,255,255,0.03)"; ctx.lineWidth = 1.5;
+                        if (decorMap[y][x] === 1) { 
+                            ctx.beginPath(); ctx.moveTo(xp+10, yp+15); ctx.lineTo(xp+35, yp+40); ctx.lineTo(xp+20, yp+52); ctx.stroke();
+                        } else if (decorMap[y][x] === 2) { 
+                            ctx.strokeRect(xp+15, yp+15, tileSize-30, tileSize-30);
+                        }
+                    }
+                }
+            }
+        }
+        
+        for(let r of rats) {
+            ctx.fillStyle = "#7f8c8d"; ctx.beginPath(); ctx.arc(r.x, r.y, 7, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = "#ffb6c1"; ctx.fillRect(r.x - 9, r.y - 1, 3, 2); 
+            ctx.fillStyle = r.isAlerting ? "#ff0000" : "#000000"; ctx.fillRect(r.x + 2, r.y - 3, 2, 2);
+        }
+
+        for(let c of calves) {
+            ctx.save(); ctx.translate(c.x, c.y);
+            ctx.fillStyle = "#566573"; ctx.fillRect(-14, -8, 28, 18); 
+            ctx.fillStyle = "#2c3e50"; ctx.beginPath(); ctx.arc(10, -10, 9, 0, Math.PI*2); ctx.fill(); 
+            ctx.fillStyle = "#bdc3c7"; ctx.fillRect(12, -18, 3, 5); ctx.fillRect(6, -18, 3, 5); 
+            ctx.restore();
+        }
+
+        for (let trail of dashTrails) drawPlayerCharacter(trail.x, trail.y, trail.dir, trail.alpha);
+        drawPlayerCharacter(player.x, player.y, player.dir, 1);
+
+        ctx.save(); ctx.translate(enemy.x, enemy.y);
+        let auraPulse = 15 + Math.sin(Date.now() / 50) * 10 + (Math.min(10, currentLevel) * 2);
+        let auraGrad = ctx.createRadialGradient(0, 0, 5, 0, 0, 30 + auraPulse);
+        auraGrad.addColorStop(0, `rgba(231, 46, 60, ${Math.min(0.9, 0.4 + currentLevel*0.05)})`); 
+        auraGrad.addColorStop(1, "transparent");
+        ctx.fillStyle = auraGrad; ctx.beginPath(); ctx.arc(0, 0, 40 + auraPulse, 0, Math.PI*2); ctx.fill();
+
+        ctx.fillStyle = "#2c1111"; ctx.beginPath(); ctx.arc(0, 0, 24, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = (currentLevel >= 10) ? "#922b21" : "#78281f"; ctx.beginPath(); ctx.arc(0, -2, 20, 0, Math.PI*2); ctx.fill();
+        ctx.strokeStyle = "#e5e8e8"; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(-12, -14); ctx.quadraticCurveTo(-26, -34, -28, -20); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(12, -14); ctx.quadraticCurveTo(26, -34, 28, -20); ctx.stroke();
+        ctx.restore();
+
+        ctx.restore();
+
+        let fColor = currentClimate.fogColor; let vRadius = currentClimate.radius;
+        const grad = ctx.createRadialGradient(canvas.width/2, canvas.height/2, vRadius * 0.1, canvas.width/2, canvas.height/2, vRadius);
+        grad.addColorStop(0, "transparent"); grad.addColorStop(0.6, fColor + "0.65)"); grad.addColorStop(1, fColor + "0.95)");
+        ctx.fillStyle = grad; ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        const dx = enemy.x - player.x, dy = enemy.y - player.y;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        if (dist > vRadius) {
+            const angle = Math.atan2(dy, dx), wave = (Date.now() % 700) / 700;
+            ctx.save(); ctx.translate(canvas.width/2, canvas.height/2); ctx.rotate(angle);
+            ctx.strokeStyle = `rgba(255, 0, 0, ${1 - wave})`; ctx.lineWidth = 5;
+            ctx.beginPath(); ctx.arc(vRadius - 20, 0, 15 + wave * 35, -Math.PI/5, Math.PI/5); ctx.stroke(); ctx.restore();
+        }
+        drawMinimap();
+    }
+
+    function drawMinimap() {
+        mCtx.fillStyle = "#030307"; mCtx.fillRect(0,0,180,180);
+        const mt = 180 / mazeW;
+        for(let y=0; y<mazeH; y++) {
+            for(let x=0; x<mazeW; x++) {
+                if(!visited[y][x]) continue;
+                if(maze[y][x] === 1) mCtx.fillStyle = "#2c3e50";
+                else if(maze[y][x] === 2) mCtx.fillStyle = "#5dade2"; 
+                else {
+                    let tileClimate = climateMap[y][x];
+                    if (tileClimate > 0) mCtx.fillStyle = BASE_CLIMATES[tileClimate].color + "33"; 
+                    else mCtx.fillStyle = "#1c2833";
+                }
+                mCtx.fillRect(x*mt, y*mt, mt, mt);
+            }
+        }
+        mCtx.fillStyle = "#ffffff"; mCtx.beginPath(); mCtx.arc(player.gridX*mt+mt/2, player.gridY*mt+mt/2, mt*1.8, 0, Math.PI*2); mCtx.fill();
+    }
+
+    function gameLoop(time) {
+        const dt = time - (lastTime || time); lastTime = time;
+        update(dt); draw(); requestAnimationFrame(gameLoop);
+    }
+    
+    window.onkeydown = e => keys[e.key.toLowerCase()] = true;
+    window.onkeyup = e => keys[e.key.toLowerCase()] = false;
+    window.onresize = () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight; };
+
+    initGame(true);
+</script>
+</body>
+</html>
+
