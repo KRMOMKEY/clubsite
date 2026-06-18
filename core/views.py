@@ -109,18 +109,18 @@ def board(request):
 # ----------------------
 @login_required
 def create_post(request):
+
     if request.method == "POST":
+
         title = request.POST.get("title", "").strip()
         content = request.POST.get("content", "").strip()
 
         if not title or not content:
             return redirect('/board/')
 
-        # 기본값: 공지 아님
         is_notice = False
 
-        # 관리자만 공지 가능
-        if request.user.is_staff or request.user.is_superuser:
+        if request.user.is_staff:
             is_notice = request.POST.get("is_notice") == "on"
 
         Post.objects.create(
@@ -131,6 +131,8 @@ def create_post(request):
         )
 
         return redirect('/board/')
+
+    return redirect('/board/')
 
 # ----------------------
 # 게시글 상세
